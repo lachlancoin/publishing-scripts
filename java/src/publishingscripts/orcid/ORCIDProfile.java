@@ -23,15 +23,29 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class ORCIDProfile {
-	 JSONObject profile;
-	 JSONArray works;
-	 String orcid;
-	 Set<String> worktypes = new HashSet<String>();
-	 
-	 BibTexEntry entries[];
 	
-	public ORCIDProfile(String orcid){
-		try{
+	//first argument is orcid
+	  public static void main(String[] args){
+		  try{
+			  for(int k=0; k<args.length; k++){
+			  ORCIDProfile profile  = new ORCIDProfile(args[k]);
+			  profile.extractEntries();
+			 profile.printEntries();
+			  }
+		  }catch(Exception exc){
+			  exc.printStackTrace();
+		  }
+	  }
+	
+	
+	 final JSONObject profile;
+	 final JSONArray works;
+	final  String orcid, given_name, family_name;
+	 final Set<String> worktypes = new HashSet<String>();
+	 final BibTexEntry entries[];
+	
+	public ORCIDProfile(String orcid) throws Exception{
+		
 		String st;
 	     File infile = new File(orcid+".json");
 	     if(false && infile.exists()){
@@ -44,18 +58,19 @@ public class ORCIDProfile {
 	    	 
 	    	 this.orcid = orcid;
 		
-	    	 Thread.currentThread().sleep(2000);
+	    	 Thread.currentThread().sleep(1000);
 	    	 PrintWriter pw = new PrintWriter(new FileWriter(infile));
 	    	 pw.print(st);
 	    	 pw.close();
 	     }
 		 this.profile= new JSONObject(st);
+		JSONObject details = (JSONObject)  get(this.profile, "orcid-profile:orcid-bio:personal-details");
+		given_name = (String) get(details, "given-names:value");
+		 family_name = (String) get(details, "family-name:value");   
 		 works = (JSONArray)  get(this.profile, "orcid-profile:orcid-activities:orcid-works:orcid-work");
 		 System.err.println("found "+works.length());
 		 entries = new BibTexEntry[works.length()];
-		}catch(Exception exc){
-			exc.printStackTrace();
-		}
+		
 	}
 	
 	public void printEntries(){
@@ -82,18 +97,13 @@ public class ORCIDProfile {
 		
 		String getAuthStr(){
 			StringBuffer authstr = new StringBuffer();
-			boolean lastFirst = true;
 			for(int i=0 ;i<authors.size(); i++){
 				List<String>str = new ArrayList<String> (Arrays.asList(authors.get(i).split("\\s+")));
-				if(i==0 && str.get(0).length()<=2 && str.get(0).length()<str.get(str.size()-1).length()) {
-					lastFirst = false;
-				}
+				
 				String authn;
-				if(lastFirst){
-					authn = str.remove(0)+", ";
-				}else{
+				
 					authn = str.remove(str.size()-1)+", ";
-				}
+				
 				for(int j=0; j<str.size();j++ ){
 					
 					String authnj = str.get(j);
@@ -149,10 +159,13 @@ public class ORCIDProfile {
 			return null;
 		}
 		
+		
+		/* This attempts to extract information from a free form citation.
+		 * It is not guaranteed to work for all formats, so use with caution
+		 *  */ 
 		void extractInfoFromCitation(int lastIndex) {
 			try{
-				System.err.println(citation);
-			//, Bioinformatics (Oxford, England), 1998, vol. 14, no. 9, pp. 823-824
+//				System.err.println(citation);
 			    if( citation ==null || lastIndex <0 || lastIndex>=citation.length()) return;
 				String cit1 = citation.substring(lastIndex);
 				List<String> all = new ArrayList<String>(Arrays.asList(cit1.split(",")));
@@ -206,25 +219,62 @@ public class ORCIDProfile {
 			if(auths==null){
 				System.err.println("auths is null");
 			}else{
+			int author_index = -1; // which index is author
+			boolean lastfirst = false; // if format is LastName, FirstName
 			for(int i=0 ;i<auths.length(); i++){
+				JSONObject auth = (JSONObject) auths.get(i);
+				if(auth==null) continue;
+				String au = ((String) get(auth,"credit-name:value"));
+				//System.err.println(au);
+				
+				if(au!=null){
+					authors.add(au);
+					String[] names  = au.split("\\s+");
+					if(names[names.length-1].toLowerCase().equals(family_name.toLowerCase()) &&  given_name.toLowerCase().startsWith(names[0].toLowerCase().charAt(0)+"")){
+							author_index = i;
+					}else if(names[0].toLowerCase().equals(family_name.toLowerCase()) && given_name.toLowerCase().startsWith(names[1].toLowerCase().charAt(0)+"")){
+						author_index = i;
+						lastfirst = true;
+				    }
+					if(names[names.length-1].toUpperCase().equals(names[names.length-1])) {
+						lastfirst = true;
+					}
+					if(citation!=null){
+						int li = citation.lastIndexOf(au);
+						if(li<0) li = citation.lastIndexOf(names[names.length-1]);
+						if(li > lastIndex) lastIndex = li+ au.length()+1;
+					}
+					
+				}
+			}
+			System.err.println(authors);
+			if(lastfirst){
+				for(int i=0; i<authors.size(); i++){
+					String[] names = authors.get(i).split("\\s+");
+					String auth = "";
+					for(int k=1; k<names.length; k++){
+						auth = auth + names[k]+" ";
+					}
+					auth = auth + names[0];
+					authors.set(i, auth);
+				}
+			}
+			System.err.println(authors);
+		//	System.err.println("author_index "+author_index);
+			/*for(int i=0 ;i<auths.length(); i++){
 				JSONObject auth = (JSONObject) auths.get(i);
 				if(auth==null) System.err.println("problem with "+title);
 				if(auth==null) continue;
 				String au = ((String) get(auth,"credit-name:value"));
 				if(au!=null){
 					au = au.trim();
-					authors.add(au);
+					
+				
 					String[] names  = au.split("\\s+");
-					if(citation!=null){
-						int li = citation.lastIndexOf(au);
-						if(li<0) li = citation.lastIndexOf(names[names.length-1]);
-						if(li > lastIndex) lastIndex = li+ au.length()+1;
-					}
+					
 				}
+			}*/
 			}
-			}
-			//lastIndex = citation.indexOf(",",lastIndex+1);
-			//if(journal == null){
 			if(citation.indexOf("@article")==0 || citationtype.toUpperCase().equals("BIBTEX")){
 				this.bibtex = citation;
 			}else{
@@ -242,49 +292,19 @@ public class ORCIDProfile {
 					index =index+1;
 				}
 				
-			//}
+				
 	}
+	
 	}
 	
 	/** gets BibtexEntry for ith work */
 	public void extractEntries() throws Exception{
-		//PrintWriter pw = new PrintWriter(new FileWriter(new File(orcid+".bib")));
 		for(int i=0; i<works.length(); i++){
 			JSONObject work = (JSONObject) works.get(i);
 			this.entries[i] = new BibTexEntry(work);
-			//entries[i].write(pw);
 		}
-	//	pw.close();
 	 }
 	
-	
-	//first argument is orcid
-  public static void main(String[] args){
-	  try{
-		  ORCIDProfile profile  = new ORCIDProfile(args[0]);
-		  
-		  profile.extractEntries();
-		 profile.printEntries();
-		//pw_journal.println(works.length());
-		
-	  }catch(Exception exc){
-		  exc.printStackTrace();
-	  }
-  }
-	  
-
-
-
-  
-  public static String getBibTex(JSONObject work){
-	//  JSONObject work = (JSONObject) works.get(i);
-		
-		return "";
-  }
-  
-  
-  
-  
 private static JSONObject select(JSONArray idents, String string, String string2) {
 	for(int i =0; i<idents.length(); i++){
 		JSONObject obj = (JSONObject) idents.get(i);
@@ -299,11 +319,7 @@ private static JSONObject select(JSONArray idents, String string, String string2
 		  try{
 		  String[] path = p.split(":");
 		  JSONObject obj1 = obj;
-		  //System.err.println(obj);
 		  for(int i=0; i<path.length; i++){
-			//  System.err.println(path[i]);
-			//  System.err.println(obj1.keySet());
-			 // System.err.println(obj1.get(path[i]).getClass());
 			  if(i<path.length-1) obj1 = obj1.getJSONObject(path[i]);
 			  else{
 				  Object res =  obj1.get(path[i]);
@@ -344,7 +360,6 @@ private static JSONObject select(JSONArray idents, String string, String string2
 		        builder.append(buffer, 0, read);
 		      }
 		      output = builder.toString();
-		     // System.out.println(output);
 		      reader.close();
 		 
 		   
@@ -353,7 +368,7 @@ private static JSONObject select(JSONArray idents, String string, String string2
 		exc.printStackTrace();
 	}
 	return output;
-	/* following attempt to remove UTF characters 
+	/* following attempt to remove odd UTF characters 
 	Pattern p = Pattern.compile("\\\\u(\\p{XDigit}{4})");
 	Matcher m = p.matcher(output);
 	StringBuffer buf = new StringBuffer(output.length());
